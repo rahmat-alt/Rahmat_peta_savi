@@ -1,0 +1,79 @@
+var dataset = geometry.filter(ee.Filter.eq('NAME_3', 'Setia Budi'));
+Map.addLayer(geometry)
+Map.centerObject(geometry, 11);
+
+//memasukkan data
+
+function calculateSAVI(image, nirband, redband)
+{
+var nir = image.select(nirband);
+var red = image.select(redband);
+
+
+//memasukkan rumus
+
+var savi = image.expression(
+   '((nir- red) / (nir + red + 0.5)) * 1.5',
+   {
+     'nir' : nir,
+     'red' : red,
+   }).rename('savi');
+return savi.copyProperties(image,['system:time_start']);
+}
+
+//memunculkan citra
+
+var savi2014 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+                .filterBounds(dataset)
+                .filterDate('2014-01-01','2024-12-31')
+                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE',5))
+                .map(function(img){
+                  return calculateSAVI(img, 'B5','B4')
+                  .clip(geometry);
+                });
+var savi2019 = ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+                .filterBounds(dataset)
+                .filterDate('2019-01-01','2019-12-31')
+                .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE',5))
+                .map(function(img){
+                  return calculateSAVI(img, 'B5','B4');
+                });
+                
+var savi2024= ee.ImageCollection("COPERNICUS/S2_SR_HARMONIZED")
+              .filterBounds(dataset)
+              .filterDate('2023-01-01','2023-12-31')
+              .map(function(img){
+               return calculateSAVI(img, 'B5','B4'); 
+              });
+              
+//memanggil semua data
+
+var allsavi = savi2014.merge(savi2019).merge(savi2024);
+
+var mediansavi2014 = savi2014.median().clip(geometry);
+var mediansavi2019 = savi2019.median().clip(geometry);
+var mediansavi2024 = savi2024.median().clip(geometry);
+
+var savipalette=['#F13507','#F17405','#EFCD0F','#D5F016','#88F41D'];
+
+var Params = {
+  min: 0.1,
+  max: 0.8,
+  palette: savipalette
+};
+
+Map.addLayer (savi2014, Params, 'median2014 (clipped)');
+Map.addLayer (savi2019, Params, 'median2019 (clipped)');
+Map.addLayer (savi2024, Params, 'median2024 (clipped)');
+
+
+var chart = ui.Chart.image.doySeries({
+  imageCollection : allsavi,
+  region : dataset,
+  regionReducer : ee.Reducer.mean(),
+  scale : 100,
+  yearReducer : ee.Reducer.mean(),
+  startDay : 1,
+  endDay : 365
+});
+
